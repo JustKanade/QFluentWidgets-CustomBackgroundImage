@@ -3,14 +3,50 @@ from qfluentwidgets import (SettingCardGroup, OptionsSettingCard, HyperlinkCard,
                             PrimaryPushSettingCard, ScrollArea, 
                             ExpandLayout, CustomColorSettingCard, setTheme, 
                             setThemeColor, InfoBar, SwitchSettingCard, RangeSettingCard,
-                            PushSettingCard)
+                            PushSettingCard, SettingCard, PushButton)
 from qfluentwidgets import FluentIcon as FIF
 from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtGui import QDesktopServices
-from PyQt5.QtWidgets import QWidget, QLabel, QFileDialog
+from PyQt5.QtWidgets import QWidget, QLabel, QFileDialog, QHBoxLayout
 
 from ..common import cfg, HELP_URL, FEEDBACK_URL, AUTHOR, VERSION, YEAR, isWin11, StyleSheet
 from ..background import get_background_manager
+
+
+class BackgroundImageCard(SettingCard):
+    """ Custom setting card with select and clear buttons for background image """
+    
+    def __init__(self, title, content, icon, parent=None):
+        super().__init__(icon, title, content, parent)
+        
+        # Create buttons
+        self.selectButton = PushButton(self.tr('Select image'), self)
+        self.clearButton = PushButton(self.tr('Clear'), self)
+        
+        # Create button layout
+        self.buttonLayout = QHBoxLayout()
+        self.buttonLayout.setSpacing(10)
+        self.buttonLayout.addWidget(self.selectButton)
+        self.buttonLayout.addWidget(self.clearButton)
+        
+        # Add button layout to the card
+        self.hBoxLayout.addLayout(self.buttonLayout)
+        self.hBoxLayout.addSpacing(16)
+        
+        # Initialize display
+        self._updateDisplay()
+        
+    def _updateDisplay(self):
+        """ Update the card display based on current background image path """
+        bg_path = cfg.get(cfg.backgroundImagePath)
+        if bg_path:
+            import os
+            file_name = os.path.basename(bg_path)
+            self.setContent(f"Selected: {file_name}")
+            self.clearButton.setEnabled(True)
+        else:
+            self.setContent(self.tr('Choose a custom background image file'))
+            self.clearButton.setEnabled(False)
 
 
 class SettingInterface(ScrollArea):
@@ -74,11 +110,10 @@ class SettingInterface(ScrollArea):
             cfg.backgroundImageEnabled,
             self.backgroundGroup
         )
-        self.backgroundImageCard = PushSettingCard(
-            self.tr('Select image'),
-            FIF.FOLDER,
+        self.backgroundImageCard = BackgroundImageCard(
             self.tr('Background image path'),
             self.tr('Choose a custom background image file'),
+            FIF.FOLDER,
             self.backgroundGroup
         )
         self.backgroundOpacityCard = RangeSettingCard(
@@ -183,7 +218,8 @@ class SettingInterface(ScrollArea):
         
         # background settings
         self.backgroundEnabledCard.checkedChanged.connect(self.__onBackgroundEnabledChanged)
-        self.backgroundImageCard.clicked.connect(self.__onSelectBackgroundImage)
+        self.backgroundImageCard.selectButton.clicked.connect(self.__onSelectBackgroundImage)
+        self.backgroundImageCard.clearButton.clicked.connect(self.__onClearBackgroundImage)
         self.backgroundOpacityCard.valueChanged.connect(self.__onBackgroundOpacityChanged)
         self.backgroundBlurCard.valueChanged.connect(self.__onBackgroundBlurChanged)
         
@@ -217,12 +253,15 @@ class SettingInterface(ScrollArea):
         if file_path:
             cfg.set(cfg.backgroundImagePath, file_path)
             self.backgroundManager.update_background()
+            self.backgroundImageCard._updateDisplay()
             self.__updateBackgroundPreview()
-            
-            # Update the card content to show selected file name
-            import os
-            file_name = os.path.basename(file_path)
-            self.backgroundImageCard.setContent(file_name)
+    
+    def __onClearBackgroundImage(self):
+        """ Handle background image clearing """
+        cfg.set(cfg.backgroundImagePath, "")
+        self.backgroundManager.update_background()
+        self.backgroundImageCard._updateDisplay()
+        self.__updateBackgroundPreview()
     
     def __onBackgroundOpacityChanged(self, value: int):
         """ Handle background opacity change """
@@ -250,4 +289,8 @@ class SettingInterface(ScrollArea):
         self.backgroundImageCard.setEnabled(is_background_enabled)
         self.backgroundOpacityCard.setEnabled(is_background_enabled)
         self.backgroundBlurCard.setEnabled(is_background_enabled)
+        
+        # Update display when background is enabled/disabled
+        if hasattr(self.backgroundImageCard, '_updateDisplay'):
+            self.backgroundImageCard._updateDisplay()
  

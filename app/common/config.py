@@ -32,7 +32,7 @@ class Config(QConfig):
     # background settings
     backgroundImageEnabled = ConfigItem("Background", "ImageEnabled", False, BoolValidator())
     backgroundImagePath = ConfigItem("Background", "ImagePath", "")
-    backgroundOpacity = RangeConfigItem("Background", "Opacity", 80, RangeValidator(0, 100))
+    backgroundOpacity = RangeConfigItem("Background", "Opacity", 30, RangeValidator(0, 100))
     backgroundBlurRadius = RangeConfigItem("Background", "BlurRadius", 0, RangeValidator(0, 50))
 
 
