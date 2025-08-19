@@ -1,1 +1,0 @@
-# QFluentWidgets-CustomizeBackgroundImage

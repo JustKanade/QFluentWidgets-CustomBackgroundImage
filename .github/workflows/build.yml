@@ -1,0 +1,272 @@
+
+name: Auto Build and Release
+
+on:
+ # push:
+   # branches: [ "main" ]   
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release Type'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+        - development
+        - beta
+        - stable
+      version_bump:
+        description: 'Version Bump'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+        - none
+        - patch
+        - minor
+        - major
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
+      build_date: ${{ steps.set-date.outputs.date }}
+      version: ${{ steps.get-version.outputs.version }}
+      channel: ${{ inputs.release_type || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set build date
+        id: set-date
+        run: |
+          DATE=$(date +"%Y-%m-%d %H:%M:%S")
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+      - name: Get current version and set build tag
+        id: get-version
+        run: |
+          # Read current version from config
+          VERSION=$(grep -oP 'VERSION = "\K[^"]+' app/common/config.py || echo "1.0.0")
+          echo "Current version: $VERSION"
+          
+          # Modify version based on input
+          IFS='.' read -ra VER_PARTS <<< "$VERSION"
+          MAJOR=${VER_PARTS[0]}
+          MINOR=${VER_PARTS[1]}
+          PATCH=${VER_PARTS[2]}
+          
+          if [ "${{ inputs.version_bump }}" = "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "${{ inputs.version_bump }}" = "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          elif [ "${{ inputs.version_bump }}" = "patch" ]; then
+            PATCH=$((PATCH + 1))
+          fi
+          
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "Updated version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+          # Update version in config file if changed
+          if [ "$VERSION" != "$NEW_VERSION" ]; then
+            sed -i "s/VERSION = \"$VERSION\"/VERSION = \"$NEW_VERSION\"/" app/common/config.py
+          fi
+      - name: Create release tag
+        id: set-tag
+        run: |
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          CHANNEL="${{ inputs.release_type || 'development' }}"
+          
+          if [ "$CHANNEL" = "stable" ]; then
+            echo "tag=v${{ steps.get-version.outputs.version }}" >> $GITHUB_OUTPUT
+          elif [ "$CHANNEL" = "beta" ]; then
+            echo "tag=v${{ steps.get-version.outputs.version }}-beta-$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+          else
+            echo "tag=dev-$(date +%Y%m%d%H%M)-$SHORT_HASH" >> $GITHUB_OUTPUT
+          fi
+
+  update-version-info:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update version info in source code
+        run: |
+          BUILD_NUMBER=${{ github.run_number }}
+          SHORT_HASH=$(git rev-parse --short HEAD)
+          BUILD_DATE="${{ needs.prepare.outputs.build_date }}"
+          CHANNEL="${{ needs.prepare.outputs.channel }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
+          
+          # Update version info in config
+          echo "Build info: $BUILD_NUMBER, $SHORT_HASH, $BUILD_DATE, $CHANNEL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Source-With-Version-Info
+          path: app/common/config.py
+          retention-days: 7
+
+  build-windows:
+    needs: [prepare, update-version-info]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Source-With-Version-Info
+          path: app/common/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Build application
+        run: |
+          # Set application name based on release type
+          if ("${{ needs.prepare.outputs.channel }}" -eq "stable") {
+            $name = "PyQt_Fluent_Background_Demo_v${{ needs.prepare.outputs.version }}_win"
+          } else {
+            $name = "PyQt_Fluent_Background_Demo_${{ needs.prepare.outputs.tag }}_win"
+          }
+          
+          pyinstaller --onefile --windowed `
+            --icon=app/resource/logo.png `
+            --add-data="app/*;app/" `
+            --add-data="config/*;config/" `
+            --name $name `
+            settings_demo.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Build
+          path: dist/*.exe
+          retention-days: 7
+
+  build-linux:
+    needs: [prepare, update-version-info]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Source-With-Version-Info
+          path: app/common/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-xinerama0 libxkbcommon-x11-0
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Build application
+        run: |
+          # Set application name based on release type
+          if [ "${{ needs.prepare.outputs.channel }}" = "stable" ]; then
+            name="PyQt_Fluent_Background_Demo_v${{ needs.prepare.outputs.version }}_linux"
+          else
+            name="PyQt_Fluent_Background_Demo_${{ needs.prepare.outputs.tag }}_linux"
+          fi
+          
+          pyinstaller --onefile \
+            --add-data="app/*:app/" \
+            --add-data="config/*:config/" \
+            --name $name \
+            settings_demo.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Linux-Build
+          path: dist/*
+          retention-days: 7
+
+  build-macos:
+    needs: [prepare, update-version-info]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Source-With-Version-Info
+          path: app/common/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Build application
+        run: |
+          # Set application name based on release type
+          if [ "${{ needs.prepare.outputs.channel }}" = "stable" ]; then
+            name="PyQt_Fluent_Background_Demo_v${{ needs.prepare.outputs.version }}_macos"
+          else
+            name="PyQt_Fluent_Background_Demo_${{ needs.prepare.outputs.tag }}_macos"
+          fi
+          
+          pyinstaller --onefile \
+            --add-data="app/*:app/" \
+            --add-data="config/*:config/" \
+            --name $name \
+            settings_demo.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macOS-Build
+          path: dist/*
+          retention-days: 7
+
+  release:
+    needs: [prepare, build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create git tag
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git tag ${{ needs.prepare.outputs.tag }}
+          git push origin ${{ needs.prepare.outputs.tag }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.channel == 'stable' && format('Stable Release v{0}', needs.prepare.outputs.version) || needs.prepare.outputs.channel == 'beta' && format('Beta Release v{0}-beta', needs.prepare.outputs.version) || format('Development Build ({0})', needs.prepare.outputs.build_date) }}
+          body: |
+            ${{ needs.prepare.outputs.channel == 'stable' && '# Stable Release' || needs.prepare.outputs.channel == 'beta' && '# Beta Release' || '# Development Build' }}
+            
+            ${{ needs.prepare.outputs.channel == 'stable' || needs.prepare.outputs.channel == 'beta' || 'Development preview build - Bugs may appear. If you are looking to just use the software, use the latest stable release.' }}
+            
+            **Version:** ${{ needs.prepare.outputs.version }}
+            **Channel:** ${{ needs.prepare.outputs.channel }}
+            **Commit:** ${{ github.sha }}
+            **Build date:** ${{ needs.prepare.outputs.build_date }}
+            **Build number:** ${{ github.run_number }}
+            
+            ## Release Notes
+            
+            Please add release notes here
+            
+          files: |
+            artifacts/Windows-Build/*
+            artifacts/Linux-Build/*
+            artifacts/macOS-Build/*
+          prerelease: ${{ needs.prepare.outputs.channel != 'stable' }}
+          draft: true  # Set as draft to allow adding release notes before official release
