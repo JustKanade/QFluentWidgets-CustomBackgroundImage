@@ -143,7 +143,6 @@ jobs:
           pyinstaller --onefile --windowed `
             --icon=app/resource/logo.ico `
             --add-data="app/*;app/" `
-            --add-data="config/*;config/" `
             --name $name `
             settings_demo.py
       - uses: actions/upload-artifact@v4
@@ -183,7 +182,6 @@ jobs:
           
           pyinstaller --onefile \
             --add-data="app/*:app/" \
-            --add-data="config/*:config/" \
             --name "$name" \
             settings_demo.py
       - uses: actions/upload-artifact@v4
@@ -221,7 +219,6 @@ jobs:
           
           pyinstaller --onefile \
             --add-data="app/*:app/" \
-            --add-data="config/*:config/" \
             --name "$name" \
             settings_demo.py
       - uses: actions/upload-artifact@v4
