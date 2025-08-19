@@ -116,7 +116,7 @@ class MainWindow(FluentWindow):
         """ Resize event """
         super().resizeEvent(e)
         if hasattr(self, 'splashScreen'):
-            self.splashScreen.resize(self.size())
+            self.splashScreen.resize(self.size()) 
     
     def paintEvent(self, event):
         """ Paint event - draw background image if enabled """
