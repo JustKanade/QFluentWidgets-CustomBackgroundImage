@@ -3,7 +3,8 @@ from qfluentwidgets import (SettingCardGroup, OptionsSettingCard, HyperlinkCard,
                             PrimaryPushSettingCard, ScrollArea, 
                             ExpandLayout, CustomColorSettingCard, setTheme, 
                             setThemeColor, InfoBar, SwitchSettingCard, RangeSettingCard,
-                            PushSettingCard, SettingCard, PushButton)
+                            PushSettingCard, SettingCard, PushButton, ExpandSettingCard,
+                            ComboBoxSettingCard)
 from qfluentwidgets import FluentIcon as FIF
 from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtGui import QDesktopServices
@@ -101,8 +102,11 @@ class SettingInterface(ScrollArea):
         )
         
         # background settings
-        self.backgroundGroup = SettingCardGroup(
-            self.tr('Background'), self.scrollWidget)
+        self.backgroundGroup = ExpandSettingCard(
+            FIF.PHOTO,
+            self.tr('Background'),
+            self.tr('Customize application background settings'),
+            self.scrollWidget)
         self.backgroundEnabledCard = SwitchSettingCard(
             FIF.PHOTO,
             self.tr('Background image'),
@@ -129,6 +133,17 @@ class SettingInterface(ScrollArea):
             self.tr('Background blur'),
             self.tr('Adjust the blur radius of the background image (0-50px)'),
             self.backgroundGroup
+        )
+        self.backgroundDisplayModeCard = ComboBoxSettingCard(
+            cfg.backgroundDisplayMode,
+            FIF.LAYOUT,
+            self.tr('Display mode'),
+            self.tr('Choose how the background image is displayed'),
+            texts=[
+                self.tr('Stretch'), self.tr('Keep Aspect Ratio'), 
+                self.tr('Tile'), self.tr('Original Size'), self.tr('Fit Window')
+            ],
+            parent=self.backgroundGroup
         )
         
         # about
@@ -188,10 +203,13 @@ class SettingInterface(ScrollArea):
         self.personalGroup.addSettingCard(self.themeColorCard)
         self.personalGroup.addSettingCard(self.zoomCard)
         
-        self.backgroundGroup.addSettingCard(self.backgroundEnabledCard)
-        self.backgroundGroup.addSettingCard(self.backgroundImageCard)
-        self.backgroundGroup.addSettingCard(self.backgroundOpacityCard)
-        self.backgroundGroup.addSettingCard(self.backgroundBlurCard)
+        # Add widgets to expand card view instead of as setting cards
+        self.backgroundGroup.viewLayout.addWidget(self.backgroundEnabledCard)
+        self.backgroundGroup.viewLayout.addWidget(self.backgroundImageCard)  
+        self.backgroundGroup.viewLayout.addWidget(self.backgroundOpacityCard)
+        self.backgroundGroup.viewLayout.addWidget(self.backgroundBlurCard)
+        self.backgroundGroup.viewLayout.addWidget(self.backgroundDisplayModeCard)
+        self.backgroundGroup._adjustViewSize()
         
         self.aboutGroup.addSettingCard(self.helpCard)
         self.aboutGroup.addSettingCard(self.feedbackCard)
@@ -222,6 +240,7 @@ class SettingInterface(ScrollArea):
         self.backgroundImageCard.clearButton.clicked.connect(self.__onClearBackgroundImage)
         self.backgroundOpacityCard.valueChanged.connect(self.__onBackgroundOpacityChanged)
         self.backgroundBlurCard.valueChanged.connect(self.__onBackgroundBlurChanged)
+        self.backgroundDisplayModeCard.comboBox.currentIndexChanged.connect(self.__onBackgroundDisplayModeChanged)
         
         # about
         self.feedbackCard.clicked.connect(
@@ -275,6 +294,13 @@ class SettingInterface(ScrollArea):
         self.backgroundManager.update_background()
         self.__updateBackgroundPreview()
     
+    def __onBackgroundDisplayModeChanged(self, index: int):
+        """ Handle background display mode change """
+        mode = self.backgroundDisplayModeCard.comboBox.itemData(index)
+        cfg.set(cfg.backgroundDisplayMode, mode)
+        self.backgroundManager.update_background()
+        self.__updateBackgroundPreview()
+    
     def __updateBackgroundPreview(self):
         """ Update background preview in main window """
         parent_window = self.window()
@@ -289,6 +315,7 @@ class SettingInterface(ScrollArea):
         self.backgroundImageCard.setEnabled(is_background_enabled)
         self.backgroundOpacityCard.setEnabled(is_background_enabled)
         self.backgroundBlurCard.setEnabled(is_background_enabled)
+        self.backgroundDisplayModeCard.setEnabled(is_background_enabled)
         
         # Update display when background is enabled/disabled
         if hasattr(self.backgroundImageCard, '_updateDisplay'):

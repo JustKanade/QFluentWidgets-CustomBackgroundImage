@@ -66,8 +66,9 @@ class BackgroundManager(QObject):
         bg_enabled = self.config_manager.get(self.config_manager.backgroundImageEnabled)
         bg_path = self.config_manager.get(self.config_manager.backgroundImagePath)
         bg_opacity = self.config_manager.get(self.config_manager.backgroundOpacity)
+        bg_display_mode = self.config_manager.get(self.config_manager.backgroundDisplayMode)
         
-        return f"{bg_enabled}_{bg_path}_{bg_opacity}"
+        return f"{bg_enabled}_{bg_path}_{bg_opacity}_{bg_display_mode}"
     
     def clear_cache(self):
         """Clear background style cache and blurred image cache"""
@@ -116,6 +117,16 @@ class BackgroundManager(QObject):
             return 0
         return self.config_manager.get(self.config_manager.backgroundBlurRadius)
         
+    def get_background_display_mode(self) -> str:
+        """Get background display mode
+        
+        Returns:
+            str: Display mode ("Stretch", "Keep Aspect Ratio", "Tile", "Original Size", "Fit Window")
+        """
+        if not self.config_manager:
+            return "Keep Aspect Ratio"
+        return self.config_manager.get(self.config_manager.backgroundDisplayMode)
+        
     def get_background_pixmap(self, window_size: QSize) -> QPixmap:
         """Get processed background image (with cached blur effects)
         
@@ -134,9 +145,10 @@ class BackgroundManager(QObject):
                 return None
                 
             blur_radius = self.get_background_blur_radius()
+            display_mode = self.get_background_display_mode()
             
             # Generate cache key
-            cache_key = f"{bg_path}_{window_size.width()}_{window_size.height()}_{blur_radius}"
+            cache_key = f"{bg_path}_{window_size.width()}_{window_size.height()}_{blur_radius}_{display_mode}"
             
             # Check cache
             if cache_key in self._blurred_pixmap_cache:
@@ -147,12 +159,8 @@ class BackgroundManager(QObject):
             if pixmap.isNull():
                 return None
                 
-            # Scale image
-            scaled_pixmap = pixmap.scaled(
-                window_size, 
-                Qt.KeepAspectRatioByExpanding, 
-                Qt.SmoothTransformation
-            )
+            # Scale image based on display mode
+            scaled_pixmap = self._process_pixmap_by_display_mode(pixmap, window_size, display_mode)
             
             # Apply blur effect if needed
             if blur_radius > 0:
@@ -172,6 +180,47 @@ class BackgroundManager(QObject):
         except Exception as e:
             logger.error(f"Failed to get background pixmap: {str(e)}")
             return None
+            
+    def _process_pixmap_by_display_mode(self, pixmap: QPixmap, window_size: QSize, display_mode: str) -> QPixmap:
+        """Process pixmap according to display mode
+        
+        Args:
+            pixmap: Original pixmap
+            window_size: Target window size
+            display_mode: Display mode string
+            
+        Returns:
+            QPixmap: Processed pixmap
+        """
+        try:
+            if display_mode == "Stretch":
+                # Stretch to fill window, may distort image
+                return pixmap.scaled(window_size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+                
+            elif display_mode == "Keep Aspect Ratio":
+                # Keep aspect ratio, expand to fill (current default behavior)
+                return pixmap.scaled(window_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                
+            elif display_mode == "Fit Window":
+                # Keep aspect ratio, fit within window
+                return pixmap.scaled(window_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                
+            elif display_mode == "Original Size":
+                # Keep original size, no scaling
+                return pixmap
+                
+            elif display_mode == "Tile":
+                # For tile mode, we need to create a pixmap that covers the window
+                # This will be handled specially in the paint event
+                return pixmap
+                
+            else:
+                # Default fallback
+                return pixmap.scaled(window_size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                
+        except Exception as e:
+            logger.error(f"Failed to process pixmap by display mode {display_mode}: {str(e)}")
+            return pixmap
             
     def _apply_efficient_blur(self, pixmap: QPixmap, blur_radius: int) -> QPixmap:
         """Apply efficient blur effect (simplified Gaussian blur)

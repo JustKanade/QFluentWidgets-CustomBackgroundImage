@@ -136,12 +136,47 @@ class MainWindow(FluentWindow):
                 opacity = self.backgroundManager.get_background_opacity() / 100.0  # Convert percentage to float
                 painter.setOpacity(opacity)
                 
-                # Calculate position to center the image
-                pixmap_size = background_pixmap.size()
+                # Get display mode
+                display_mode = self.backgroundManager.get_background_display_mode()
+                
+                # Draw based on display mode
+                self._draw_background_by_mode(painter, background_pixmap, window_size, display_mode)
+            
+            painter.end()
+    
+    def _draw_background_by_mode(self, painter, background_pixmap, window_size, display_mode):
+        """Draw background image according to display mode
+        
+        Args:
+            painter: QPainter instance
+            background_pixmap: Background image pixmap
+            window_size: Window size
+            display_mode: Display mode string
+        """
+        pixmap_size = background_pixmap.size()
+        
+        if display_mode == "Tile":
+            # Tile the image across the window
+            for x in range(0, window_size.width(), pixmap_size.width()):
+                for y in range(0, window_size.height(), pixmap_size.height()):
+                    painter.drawPixmap(x, y, background_pixmap)
+                    
+        elif display_mode == "Original Size":
+            # Center the image at original size
+            x = max(0, (window_size.width() - pixmap_size.width()) // 2)
+            y = max(0, (window_size.height() - pixmap_size.height()) // 2)
+            painter.drawPixmap(x, y, background_pixmap)
+            
+        else:
+            # For "Stretch", "Keep Aspect Ratio", "Fit Window" modes
+            # The scaling is already handled in BackgroundManager, just center and draw
+            if display_mode == "Fit Window":
+                # Center the image that fits within window
+                x = max(0, (window_size.width() - pixmap_size.width()) // 2)
+                y = max(0, (window_size.height() - pixmap_size.height()) // 2)
+            else:
+                # For stretch and keep aspect ratio modes, image should fill the window
                 x = max(0, (window_size.width() - pixmap_size.width()) // 2)
                 y = max(0, (window_size.height() - pixmap_size.height()) // 2)
                 
-                # Draw the background image
-                painter.drawPixmap(x, y, background_pixmap)
-            
-            painter.end() 
+            painter.drawPixmap(x, y, background_pixmap) 

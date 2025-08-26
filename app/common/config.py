@@ -34,6 +34,10 @@ class Config(QConfig):
     backgroundImagePath = ConfigItem("Background", "ImagePath", "")
     backgroundOpacity = RangeConfigItem("Background", "Opacity", 30, RangeValidator(0, 100))
     backgroundBlurRadius = RangeConfigItem("Background", "BlurRadius", 0, RangeValidator(0, 50))
+    backgroundDisplayMode = OptionsConfigItem(
+        "Background", "DisplayMode", "Keep Aspect Ratio", 
+        OptionsValidator(["Stretch", "Keep Aspect Ratio", "Tile", "Original Size", "Fit Window"])
+    )
 
 
 # Create global config instance
